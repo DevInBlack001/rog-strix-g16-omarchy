@@ -34,6 +34,9 @@ rm_file /etc/modprobe.d/90-snd-hda-no-powersave.conf
 rm_file /etc/pacman.d/hooks/zz-asusd-aura-zones.hook
 rm_file /usr/local/bin/asusd-aura-zones
 rm_file "$HOME/.config/wireplumber/wireplumber.conf.d/50-no-suspend-builtin-audio.conf"
+rm_file "$HOME/.local/bin/omarchy-theme-set-keyboard-zones"
+rm_file "$HOME/.config/omarchy/hooks/theme-set.d/omarchy-theme-set-keyboard-zones"
+rm_file "$HOME/.config/omarchy/hooks/post-boot.d/omarchy-theme-set-keyboard-zones"
 
 printf '\n%s== Left in place, revert by hand if you want them%s\n' "$B" "$N"
 printf '  %s%s%s\n' "$D" "aura_support.ron keeps the patched zones until the next asusctl upgrade" "$N"

@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+#
+# Spread the current Omarchy theme across the four Aura keyboard zones.
+#
+# Omarchy's own omarchy-theme-set-keyboard-asus-rog paints the whole keyboard
+# one flat colour (`asusctl aura effect static -c <accent>`, no --zone). This
+# board has four addressable bands, so this runs after it and repaints them
+# individually. Zone 1 is the leftmost band (Esc/Tab/Caps/LShift/QWER/ASDF),
+# zone 4 the rightmost.
+#
+# Installed as a theme-set hook, so it re-runs on every theme change:
+#   omarchy hook install theme-set ~/.local/bin/omarchy-theme-set-keyboard-zones
+#
+# Modes -- set MODE in ~/.config/omarchy/keyboard-zones.conf, or override for a
+# single run with `MODE=palette omarchy-theme-set-keyboard-zones`:
+#
+#   gradient  (default) smooth ramp from the theme's keyboard colour to a
+#             contrasting colour picked out of the theme palette
+#   palette   four distinct colours straight from the theme palette
+#   accent    flat -- every zone the theme colour (what Omarchy does natively)
+#
+# Exits 0 and silently on any machine without asusctl, without a running asusd,
+# or without zone support, so it can never break a theme switch.
+
+set -uo pipefail
+
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/keyboard-zones.conf"
+
+# shellcheck source=/dev/null
+[[ -f $CONF ]] && source "$CONF"
+MODE="${MODE:-gradient}"
+
+command -v asusctl >/dev/null 2>&1 || exit 0
+[[ -f "$STATE/colors.toml" ]] || exit 0
+
+# asusd has to be up, or every call just errors. Run as a post-boot hook this
+# can lose the race with the daemon, so wait briefly rather than giving up --
+# but never block a theme switch, hence the short ceiling.
+for _ in $(seq 1 "${ASUSD_WAIT:-10}"); do
+  systemctl is-active --quiet asusd 2>/dev/null && break
+  sleep 1
+done
+systemctl is-active --quiet asusd 2>/dev/null || exit 0
+
+# Base colour: prefer the theme's own keyboard.rgb, since a theme is allowed to
+# override its accent there (tokyo-night ships ff00ff rather than its accent).
+BASE=""
+if [[ -f "$STATE/keyboard.rgb" ]]; then
+  BASE=$(tr -d '#[:space:]' <"$STATE/keyboard.rgb")
+fi
+
+ZONE_COLOURS=$(
+  MODE="$MODE" BASE="$BASE" python3 - "$STATE/colors.toml" <<'PY'
+import colorsys, os, re, sys
+
+mode = os.environ.get("MODE", "gradient")
+base_hex = os.environ.get("BASE", "").strip().lower()
+
+# colors.toml is flat `key = "#rrggbb"`; a real TOML parser is overkill and
+# tomllib is not guaranteed on every install this might get copied to.
+palette = {}
+with open(sys.argv[1]) as fh:
+    for line in fh:
+        m = re.match(r'\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"#?([0-9A-Fa-f]{6})"', line)
+        if m:
+            palette[m.group(1).lower()] = m.group(2).lower()
+
+if not re.fullmatch(r"[0-9a-f]{6}", base_hex or ""):
+    base_hex = palette.get("accent", "")
+if not re.fullmatch(r"[0-9a-f]{6}", base_hex or ""):
+    sys.exit(1)
+
+def to_rgb(h):
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+def to_hex(rgb):
+    return "".join(f"{max(0, min(255, round(c * 255))):02x}" for c in rgb)
+
+def hsv(h):
+    return colorsys.rgb_to_hsv(*to_rgb(h))
+
+# Interpolate through linear light, not gamma-encoded sRGB -- a straight lerp
+# between two saturated colours dips muddy through the middle.
+def lin(c):
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+def unlin(c):
+    return c * 12.92 if c <= 0.0031308 else 1.055 * (c ** (1 / 2.4)) - 0.055
+
+def mix(a, b, t):
+    ra, rb = to_rgb(a), to_rgb(b)
+    return to_hex(tuple(unlin(lin(ra[i]) * (1 - t) + lin(rb[i]) * t) for i in range(3)))
+
+def hue_gap(a, b):
+    d = abs(hsv(a)[0] - hsv(b)[0])
+    return min(d, 1 - d)
+
+if mode == "accent":
+    out = [base_hex] * 4
+
+elif mode == "palette":
+    # Four distinct hues, in a fixed preference order so a theme's identity
+    # colour leads. Pad with the base rather than repeating a near-duplicate.
+    picks, seen = [base_hex], {base_hex}
+    for key in ("magenta", "cyan", "green", "orange", "blue", "red", "yellow", "brown"):
+        c = palette.get(key)
+        if not c or c in seen:
+            continue
+        if hsv(c)[1] < 0.12:                       # skip washed-out greys
+            continue
+        if any(hue_gap(c, p) < 0.07 for p in picks):
+            continue
+        picks.append(c)
+        seen.add(c)
+        if len(picks) == 4:
+            break
+    while len(picks) < 4:
+        picks.append(base_hex)
+    out = picks
+
+else:  # gradient
+    # Pick the far end of the ramp: the first palette colour that is clearly a
+    # different hue and actually saturated. Falls back to a hue-rotated base so
+    # monochrome themes (vantablack, white) still get a visible ramp.
+    far = None
+    for key in ("magenta", "cyan", "green", "orange", "blue", "red", "yellow"):
+        c = palette.get(key)
+        if c and hsv(c)[1] >= 0.25 and hue_gap(c, base_hex) >= 0.11:
+            far = c
+            break
+    if far is None:
+        h, s, v = hsv(base_hex)
+        if s < 0.12:
+            # Greyscale theme: ramp brightness instead of hue, or there is
+            # nothing to see.
+            far = to_hex(colorsys.hsv_to_rgb(h, s, max(0.12, v * 0.25)))
+        else:
+            far = to_hex(colorsys.hsv_to_rgb((h + 0.14) % 1.0, s, v))
+    out = [mix(base_hex, far, i / 3) for i in range(4)]
+
+print(" ".join(out))
+PY
+) || exit 0
+
+[[ -n ${ZONE_COLOURS:-} ]] || exit 0
+
+zone=1
+for colour in $ZONE_COLOURS; do
+  # A board whose aura_support.ron declares no zones answers NotSupported here.
+  # Bail out rather than spraying four identical errors across the theme switch.
+  if ! asusctl aura effect static -c "$colour" --zone "$zone" >/dev/null 2>&1; then
+    exit 0
+  fi
+  zone=$((zone + 1))
+done

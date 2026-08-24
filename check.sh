@@ -196,6 +196,19 @@ PY
   [[ -f /etc/pacman.d/hooks/zz-asusd-aura-zones.hook ]] \
     && pass "pacman hook present ${D}(survives asusctl upgrades)${N}" \
     || fail "missing pacman hook -- the next asusctl upgrade reverts the zones"
+
+  # Theme-following zones. Both hooks matter: theme-set repaints on a theme
+  # change, post-boot because asusd persists multizone_on: false and restores
+  # the flat colour at boot.
+  if [[ -x "$HOME/.local/bin/omarchy-theme-set-keyboard-zones" ]]; then
+    for h in theme-set post-boot; do
+      [[ -f "$HOME/.config/omarchy/hooks/$h.d/omarchy-theme-set-keyboard-zones" ]] \
+        && pass "$h hook installed" \
+        || warn "$h hook missing ${D}(omarchy hook install $h ~/.local/bin/omarchy-theme-set-keyboard-zones)${N}"
+    done
+  else
+    note "theme-following zones not installed (optional)"
+  fi
 else
   note "asusctl not installed"
 fi

@@ -59,6 +59,7 @@ do it for you: **[docs/bios.md](docs/bios.md)**.
 | Speakers crackle / drop out when idle | `snd_hda_intel power_save=0` + no WirePlumber idle-suspend | [audio.md](docs/audio.md) |
 | `asusctl aura ... --zone N` returns `NotSupported` | Patch the four zones into `aura_support.ron`, pinned by a pacman hook | [keyboard.md](docs/keyboard.md) |
 | Super key stops working | It's a firmware lock. Press **Fn+Super** (twice) | [keyboard.md](docs/keyboard.md) |
+| Keyboard is one flat colour per theme | Spread the theme across all four zones, re-applied at boot | [keyboard.md](docs/keyboard.md) |
 | Wi-Fi bar icon shows disconnected on a working link | NM profile missing `802-11-wireless.mode` | [network.md](docs/network.md) |
 
 ---
@@ -102,6 +103,7 @@ etc/                system files, installed to the same paths
   modprobe.d/90-snd-hda-no-powersave.conf
   pacman.d/hooks/zz-asusd-aura-zones.hook
 usr/local/bin/asusd-aura-zones
+home/.local/bin/omarchy-theme-set-keyboard-zones
 home/.config/…      user files, installed under $HOME
 
 docs/               the reasoning, the dead ends, and how to diagnose a relapse

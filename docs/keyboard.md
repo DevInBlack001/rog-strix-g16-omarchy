@@ -72,6 +72,88 @@ you can drop the hook.
 
 ---
 
+## Making the zones follow the Omarchy theme
+
+**Omarchy already themes the keyboard — check before building anything.**
+`omarchy-theme-set` calls `omarchy-theme-set-keyboard`, which calls
+`omarchy-theme-set-keyboard-asus-rog`:
+
+```bash
+color=$(sed 's/^#//' "$HOME/.local/state/omarchy/current/theme/keyboard.rgb")
+asusctl aura effect static -c "$color"
+```
+
+That is **one flat colour across the whole keyboard** (no `--zone`). The colour
+comes from the theme's `keyboard.rgb`, generated from the
+`{{ accent }}` template — though a theme may ship its own (tokyo-night ships
+`ff00ff` rather than its accent).
+
+Since this board has four addressable bands, `omarchy-theme-set-keyboard-zones`
+runs *after* the stock script and repaints them as a gradient. Installed as
+both a `theme-set` and a `post-boot` hook:
+
+```sh
+omarchy hook install theme-set  ~/.local/bin/omarchy-theme-set-keyboard-zones
+omarchy hook install post-boot  ~/.local/bin/omarchy-theme-set-keyboard-zones
+```
+
+Modes, via `MODE` in `~/.config/omarchy/keyboard-zones.conf` (or one-shot,
+`MODE=palette omarchy-theme-set-keyboard-zones`):
+
+| Mode | Result |
+|---|---|
+| `gradient` *(default)* | Ramp from the theme colour to a contrasting palette colour |
+| `palette` | Four distinct hues from the theme palette |
+| `accent` | Flat — same as stock Omarchy |
+
+Examples of what `gradient` produces:
+
+```
+catppuccin    89b4fa  8dc5ef  90d4e2  94e2d5     blue  -> cyan
+nord          81a1c1  8eabb2  99b5a0  a3be8c     blue  -> green
+matte-black   e68e0d  cdb20d  afce0d  88e60d     amber -> lime
+vantablack    8d8d8d  777777  595959  232323     brightness ramp
+```
+
+Two details that matter:
+
+- **Interpolation happens in linear light**, not gamma-encoded sRGB. A straight
+  lerp between two saturated colours dips muddy through the middle.
+- **Monochrome themes** (vantablack, white, solitude) have no second hue to ramp
+  to, so it falls back to a brightness ramp. `palette` mode simply flattens on
+  those — which is why `gradient` is the default.
+
+### ⚠ `multizone_on` stays `false`, so zones do not survive a reboot
+
+This is the part that isn't obvious. Setting a zone with
+`asusctl aura effect static -c <hex> --zone <n>` **does** reach the hardware
+immediately — verified visually with a red/green/blue/white test pattern. But
+asusd stores it with `multizone_on: false` in `/etc/asusd/aura_19b6.ron`, and
+`LedModeData` keeps reporting `zone 0` with the flat colour:
+
+```
+.LedModeData  (uu(yyy)(yyy)ss)  0 0 137 180 250 0 0 0 "Med" "Right"
+                                  ^ zone 0 = None, not the zone just set
+```
+
+So on the next boot asusd restores the *flat* colour, not the gradient. There is
+no multizone toggle on the D-Bus interface, and writing `LedModeData` directly
+with a zone is silently ignored:
+
+```sh
+busctl --system set-property xyz.ljones.Asusd /xyz/ljones/aura/19b6_2_4 \
+  xyz.ljones.Aura LedModeData '(uu(yyy)(yyy)ss)' 0 1 255 0 0 0 0 0 "Med" "Right"
+# no error, no effect -- the property still reads zone 0
+```
+
+**Hence the `post-boot` hook.** Rather than fight `multizone_on`, just re-apply
+the zones after boot. The script waits up to 10 s for asusd (`ASUSD_WAIT`) so it
+doesn't lose the race at startup, and exits 0 silently on any machine without
+asusctl, without a running asusd, or without zone support — a hook must never
+break a theme switch.
+
+---
+
 ## The Super key can be disabled in firmware
 
 **Symptom:** Super stops working, survives reboots, and looks exactly like a

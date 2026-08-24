@@ -9,7 +9,7 @@
 #   ./install.sh --dry-run    print what would change, touch nothing
 #   ./install.sh audio sleep  apply only the named sections
 #
-# Sections: audio sleep keyboard nvidia menu
+# Sections: audio sleep keyboard nvidia theme menu
 #
 # NOT covered here because it cannot be scripted -- see docs/bios.md. Disabling
 # Intel VMD in the BIOS is the single biggest win on this machine (-8.5 W idle)
@@ -236,6 +236,44 @@ do_keyboard() {
   fi
 }
 
+# ---------------------------------------------------------------- theme -----
+
+do_theme() {
+  section "Keyboard follows the theme"
+
+  if ! need_pkg asusctl; then
+    note "asusctl not installed, skipping"
+    return
+  fi
+  if ! command -v omarchy >/dev/null 2>&1; then
+    note "not Omarchy, skipping"
+    return
+  fi
+
+  # Omarchy already paints the whole keyboard the theme colour via
+  # omarchy-theme-set-keyboard-asus-rog. This adds the four-zone gradient on
+  # top, and runs after it. See docs/keyboard.md.
+  install_file home/.local/bin/omarchy-theme-set-keyboard-zones \
+               "$HOME/.local/bin/omarchy-theme-set-keyboard-zones" 755
+
+  # theme-set repaints on every theme change; post-boot is needed because asusd
+  # persists multizone_on: false and restores the flat colour at boot.
+  local h
+  for h in theme-set post-boot; do
+    local dest="$HOME/.config/omarchy/hooks/$h.d/omarchy-theme-set-keyboard-zones"
+    if [[ -f "$dest" ]] && cmp -s "$HOME/.local/bin/omarchy-theme-set-keyboard-zones" "$dest"; then
+      ok "$h hook"
+    else
+      act "$h hook"
+      (( DRY )) || omarchy hook install "$h" "$HOME/.local/bin/omarchy-theme-set-keyboard-zones" >/dev/null
+    fi
+  done
+
+  (( DRY )) || bash "$HOME/.local/bin/omarchy-theme-set-keyboard-zones" || true
+  note "modes: gradient (default), palette, accent -- set MODE in"
+  note "~/.config/omarchy/keyboard-zones.conf"
+}
+
 # ----------------------------------------------------------------- menu -----
 
 do_menu() {
@@ -288,11 +326,11 @@ for arg in "$@"; do
   case "$arg" in
     --dry-run|-n) DRY=1 ;;
     -h|--help)    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
-    audio|sleep|keyboard|nvidia|menu) SECTIONS+=("$arg") ;;
+    audio|sleep|keyboard|nvidia|menu|theme) SECTIONS+=("$arg") ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
-(( ${#SECTIONS[@]} )) || SECTIONS=(audio sleep nvidia keyboard menu)
+(( ${#SECTIONS[@]} )) || SECTIONS=(audio sleep nvidia keyboard theme menu)
 
 preflight
 for s in "${SECTIONS[@]}"; do "do_$s"; done
