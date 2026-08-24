@@ -18,6 +18,8 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/hardware-detect.sh
+source "$REPO/lib/hardware-detect.sh"
 STAMP="$(date +%s)"
 DRY=0
 CHANGED=0
@@ -69,9 +71,8 @@ need_pkg() {
 preflight() {
   section "Preflight"
 
-  local board
-  board="$(cat /sys/class/dmi/id/board_name 2>/dev/null || echo unknown)"
-  if [[ "$board" == G615* ]]; then
+  local board; board="$(detect_board)"
+  if is_g615_board; then
     ok "board $board"
   else
     warn "board reads '$board', not a G615* ROG Strix G16"
@@ -79,6 +80,20 @@ preflight() {
     note "and keyboard sections are likely wrong. Ctrl-C now unless you know"
     note "what you are doing."
     sleep 5
+  fi
+
+  if is_target_amp; then
+    ok "TAS2781 amp detected -- audio/suspend fixes apply"
+  else
+    note "no TAS2781 amp detected -- audio and s2idle-forcing sections below"
+    note "will likely install files that don't do anything useful here."
+  fi
+
+  if has_asus_nkey_keyboard; then
+    ok "ASUS N-KEY keyboard detected -- zone patch applies"
+  else
+    note "no ASUS N-KEY (0b05:19b6) keyboard detected -- the keyboard section"
+    note "targets that device table entry specifically."
   fi
 
   if [[ -r /etc/os-release ]] && grep -q '^ID=omarchy' /etc/os-release; then

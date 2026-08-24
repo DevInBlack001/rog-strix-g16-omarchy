@@ -42,6 +42,11 @@ reboot
 `<file>.bak.<epoch>`. `./uninstall.sh` reverts it. You can apply one area at a
 time: `./install.sh audio sleep`.
 
+`check.sh` fingerprints your hardware first and only fails a check when the
+matching hardware is actually present, reporting `N/A` for anything that
+isn't. On a machine other than a G615JMR, expect mostly `N/A`, that's
+correct, not a bug: see [docs/hardware-detection.md](docs/hardware-detection.md).
+
 **Do the BIOS change too.** It is the single biggest win here and no script can
 do it for you: **[docs/bios.md](docs/bios.md)**.
 
@@ -94,7 +99,13 @@ will need your recovery key.
 ```
 install.sh          apply (idempotent, --dry-run supported, per-section)
 uninstall.sh        revert
-check.sh            read-only health check, exits non-zero if something is off
+check.sh            read-only health check, fingerprints the machine first and
+                     gates each check on whether the hardware it targets is
+                     present (N/A rather than FAIL on unrelated hardware),
+                     exits non-zero only if an applicable check is off
+
+lib/hardware-detect.sh   shared board/CPU/codec/keyboard/GPU detection, used
+                          by both install.sh and check.sh
 
 etc/                system files, installed to the same paths
   tmpfiles.d/zz-s2idle.conf
@@ -107,6 +118,7 @@ home/.local/bin/omarchy-theme-set-keyboard-zones
 home/.config/…      user files, installed under $HOME
 
 docs/               the reasoning, the dead ends, and how to diagnose a relapse
+  hardware-detection.md   how check.sh decides what applies to your machine
 ```
 
 Every config file carries its own rationale in comments. If you only take one
@@ -143,6 +155,12 @@ Four readings here are actively misleading. Each cost real time:
 If you have a G615-series Strix G16 and something here is wrong for your board,
 especially a different keyboard entry in `aura_support.ron`, or amps that behave
 differently across S4, please open an issue with the output of `./check.sh`.
+
+Running this on different hardware entirely, a different ASUS board or
+another brand, is also useful: `./check.sh` will mostly report `N/A`, and the
+fingerprint it prints (board, codec, amp, keyboard) is exactly what's needed
+to eventually extend `lib/hardware-detect.sh` to recognize your machine.
+See `CLAUDE.md`, "Generalizing to other hardware and brands," for the plan.
 
 One thing genuinely untested: **whether the TAS2781 amps survive a hibernate
 (S4) resume.** They do not survive S3. Hibernate *may* differ, because resume is
