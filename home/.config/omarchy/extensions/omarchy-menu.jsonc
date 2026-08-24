@@ -1,0 +1,10 @@
+{
+  // Fragment: merged into your existing ~/.config/omarchy/extensions/omarchy-menu.jsonc
+  // by install.sh. If you already have that file, only this key is added.
+  //
+  // Suspend should end in hibernation rather than an open-ended s2idle: this
+  // platform has no S0ix, so a "suspended" machine still burns ~2.65 W with the
+  // fan off and sits warm in a bag. See
+  // /etc/systemd/sleep.conf.d/10-suspend-then-hibernate.conf.
+  "system.suspend": {"action":"systemctl suspend-then-hibernate"},
+}

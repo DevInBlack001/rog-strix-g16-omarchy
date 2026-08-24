@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Declare the four keyboard zones asusd omits for the G615JM entry.
+
+The G615JMR chassis drives four addressable bands (verified with a firmware
+rainbow-wave: the keyboard splits into distinct blocks, not a smooth per-key
+gradient), but aura_support.ron ships `basic_zones: []` for the G615JM entry
+that this board name matches. With no zones declared asusd answers every zoned
+effect with `NotSupported`, so `asusctl aura effect static --zone 1` fails even
+though the hardware is willing. The sibling G615LR entry on the same chassis
+declares all four; this brings G615JM in line.
+
+aura_support.ron belongs to the asusctl package, so a package upgrade restores
+the stock file. A pacman hook re-runs this afterwards. Idempotent by design.
+"""
+import re
+import shutil
+import sys
+
+PATH = "/usr/share/asusd/aura_support.ron"
+ZONES = "[Key1, Key2, Key3, Key4]"
+
+src = open(PATH).read()
+
+# Match only the G615JM entry, capturing whatever its basic_zones currently is,
+# so an upstream fix is recognised rather than clobbered.
+entry = re.compile(
+    r'\(\s*device_name:\s*"G615JM",'      # this board name matches by prefix
+    r'(?P<head>.*?basic_zones:\s*)'
+    r'(?P<zones>\[[^\]]*\])'
+    r'(?P<tail>.*?\n    \),)',
+    re.DOTALL,
+)
+
+match = entry.search(src)
+if not match:
+    # Never fail an upgrade over this; a loud note is enough to go looking.
+    print("asusd-aura-zones: no G615JM entry in aura_support.ron -- keyboard "
+          "zones NOT restored, check whether upstream renamed it", file=sys.stderr)
+    sys.exit(0)
+
+if match.group("zones") != "[]":
+    print(f"asusd-aura-zones: G615JM already declares {match.group('zones')}, nothing to do")
+    sys.exit(0)
+
+start, end = match.span("zones")
+shutil.copy2(PATH, PATH + ".bak")
+open(PATH, "w").write(src[:start] + ZONES + src[end:])
+print(f"asusd-aura-zones: declared {ZONES} for G615JM in {PATH}")

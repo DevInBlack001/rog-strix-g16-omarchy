@@ -1,0 +1,13 @@
+# aura_support.ron is packaged by asusctl, so an upgrade drops the four
+# keyboard zones this board actually has. Put them back.
+
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = asusctl
+
+[Action]
+Description = Restoring G615JM keyboard zone declaration...
+When = PostTransaction
+Exec = /usr/local/bin/asusd-aura-zones
