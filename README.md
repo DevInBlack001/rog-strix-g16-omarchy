@@ -6,7 +6,7 @@ to, loses its speakers after suspend, ships a keyboard whose RGB zones the
 daemon refuses to address, and fails to resume from hibernate.
 
 All of it is fixable. Most of it took a long time to diagnose because the
-obvious diagnostic lies — the mixer reads 100% while the speakers are dead, the
+obvious diagnostic lies, the mixer reads 100% while the speakers are dead, the
 GPU reads `active` while it is asleep, `modprobe -c` reports a value the running
 kernel doesn't have. The notes here try to save you that.
 
@@ -74,7 +74,7 @@ Intel VMD disabled  13.0 W idle    6.8 h
 
 VMD-managed PCIe links cannot negotiate ASPM, so the CPU package never leaves
 PC2. Every sysfs knob that gets recommended for laptop battery life was measured
-on this machine and was worthless by comparison — 165 Hz → 60 Hz saved 0.27 W,
+on this machine and was worthless by comparison, 165 Hz → 60 Hz saved 0.27 W,
 and PCI/USB runtime PM, `panel_od`, audio idle tuning and Wi-Fi powersave
 produced *no measurable change at all*.
 
@@ -82,7 +82,7 @@ So: don't tune sysfs chasing idle watts here. Turn off VMD, then stop. The
 remaining floor is hardware.
 
 If you dual-boot Windows, **read [docs/bios.md](docs/bios.md) before flipping
-the switch** — Windows will not boot with VMD off until you prepare it, and if
+the switch**. Windows will not boot with VMD off until you prepare it, and if
 your C: is BitLocker-encrypted the storage-mode change moves TPM PCRs and you
 will need your recovery key.
 
@@ -108,7 +108,7 @@ docs/               the reasoning, the dead ends, and how to diagnose a relapse
 ```
 
 Every config file carries its own rationale in comments. If you only take one
-thing from this repo, take the comments — they say *why*, which is the part that
+thing from this repo, take the comments they say *why*, which is the part that
 stops you undoing the fix six months later.
 
 ---
@@ -138,9 +138,9 @@ Four readings here are actively misleading. Each cost real time:
 
 ## Contributing
 
-If you have a G615-series Strix G16 and something here is wrong for your board —
+If you have a G615-series Strix G16 and something here is wrong for your board,
 especially a different keyboard entry in `aura_support.ron`, or amps that behave
-differently across S4 — please open an issue with the output of `./check.sh`.
+differently across S4, please open an issue with the output of `./check.sh`.
 
 One thing genuinely untested: **whether the TAS2781 amps survive a hibernate
 (S4) resume.** They do not survive S3. Hibernate *may* differ, because resume is
