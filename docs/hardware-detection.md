@@ -1,12 +1,12 @@
-# Hardware detection: why `check.sh` might say N/A
+# Hardware detection: why you might see N/A
 
-`check.sh` fingerprints the machine it's running on before checking
-anything, so it can tell the difference between "this fix is broken" and
-"this fix doesn't apply to your hardware." If you're running this on
-something other than a G615JMR, expect a wall of `N/A`, that's the intended
-result, not a bug.
+Both `check.sh` and `install.sh` fingerprint the machine they're running
+on before doing anything, so each can tell the difference between "this
+fix is broken" (or "not applied yet") and "this fix doesn't apply to your
+hardware." If you're running either on something other than a G615JMR,
+expect a wall of `N/A`, that's the intended result, not a bug.
 
-## The four outcomes
+## `check.sh`'s four outcomes
 
 ```
 PASS  the fix's hardware is present and the fix is correctly in place
@@ -17,6 +17,21 @@ warn  informational, doesn't affect the exit code either way
 
 Only `FAIL` sets a non-zero exit. A machine that reports every check as
 `N/A` exits 0, correctly, because nothing that applies to it is broken.
+
+## `install.sh` gates the same way
+
+Each hardware-specific section (`do_audio`, the amp and board-specific
+halves of `do_sleep`, `do_keyboard`, `do_theme`, `do_menu`) checks its
+matching predicate before writing anything, reporting `N/A` instead of
+installing a file that does nothing useful. This isn't only a reporting
+nicety: `aura_support.ron` is one file shared across every board `asusd`
+knows about, so before this gate, running the keyboard section on any
+machine with `asusctl` installed would rewrite the `G615JM` entry in it
+regardless of whether that board was actually present. `do_keyboard` and
+`do_theme` are gated on `has_asus_nkey_keyboard`, not just on `asusctl`
+being installed. On unrelated hardware, `./install.sh --dry-run` now
+reports `N/A` for every hardware-specific section and "0 change(s) would
+be made."
 
 ## What gets fingerprinted
 
@@ -63,5 +78,5 @@ Every `N/A` line names what it's not matching. Read it as: this repo has
 nothing to say about that part of your machine, not: something is broken.
 If you have a G615-series board that reports something unexpected, or want
 to add detection for a different board or codec entirely, see
-`CLAUDE.md`, "Generalizing to other hardware and brands," for the current
-plan and how a contributed profile would slot in.
+[../ROADMAP.md](../ROADMAP.md) for the current plan and how a contributed
+profile would slot in.

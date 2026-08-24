@@ -27,15 +27,16 @@ CHANGED=0
 # ---------------------------------------------------------------- output ----
 
 if [[ -t 1 ]]; then
-  B=$'\e[1m'; G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; D=$'\e[2m'; N=$'\e[0m'
+  B=$'\e[1m'; G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; C=$'\e[36m'; D=$'\e[2m'; N=$'\e[0m'
 else
-  B=; G=; Y=; R=; D=; N=
+  B=; G=; Y=; R=; C=; D=; N=
 fi
 
 section() { printf '\n%s== %s%s\n' "$B" "$1" "$N"; }
 ok()      { printf '  %s.%s %s\n'      "$G" "$N" "$1"; }
 act()     { printf '  %s+%s %s\n'      "$Y" "$N" "$1"; CHANGED=$((CHANGED+1)); }
 warn()    { printf '  %s!%s %s\n'      "$R" "$N" "$1"; }
+skip()    { printf '  %sN/A%s %s\n'    "$C" "$N" "$1"; }
 note()    { printf '    %s%s%s\n'      "$D" "$1" "$N"; }
 
 # ------------------------------------------------------------- primitives ----
@@ -76,24 +77,25 @@ preflight() {
     ok "board $board"
   else
     warn "board reads '$board', not a G615* ROG Strix G16"
-    note "These fixes are written for the G615JMR. On another board the audio"
-    note "and keyboard sections are likely wrong. Ctrl-C now unless you know"
-    note "what you are doing."
+    note "These fixes are written for the G615JMR. Sections below now gate"
+    note "themselves on the hardware they target and will report N/A rather"
+    note "than write anything irrelevant, but Ctrl-C now if you'd rather not"
+    note "run this at all on unfamiliar hardware."
     sleep 5
   fi
 
   if is_target_amp; then
-    ok "TAS2781 amp detected -- audio/suspend fixes apply"
+    ok "TAS2781 amp detected, audio/suspend fixes apply"
   else
-    note "no TAS2781 amp detected -- audio and s2idle-forcing sections below"
-    note "will likely install files that don't do anything useful here."
+    note "no TAS2781 amp detected, the audio section and the s2idle-forcing"
+    note "part of sleep will report N/A below."
   fi
 
   if has_asus_nkey_keyboard; then
-    ok "ASUS N-KEY keyboard detected -- zone patch applies"
+    ok "ASUS N-KEY keyboard detected, zone patch applies"
   else
-    note "no ASUS N-KEY (0b05:19b6) keyboard detected -- the keyboard section"
-    note "targets that device table entry specifically."
+    note "no ASUS N-KEY (0b05:19b6) keyboard detected, the keyboard and"
+    note "theme sections will report N/A below."
   fi
 
   if [[ -r /etc/os-release ]] && grep -q '^ID=omarchy' /etc/os-release; then
@@ -111,6 +113,11 @@ preflight() {
 
 do_audio() {
   section "Audio (ALC294 + TAS2781 amps)"
+
+  if ! is_target_codec; then
+    skip "codec is '$(detect_codec_name)', not ALC294+TAS2781, nothing to do here"
+    return
+  fi
 
   install_file etc/modprobe.d/90-snd-hda-no-powersave.conf \
                /etc/modprobe.d/90-snd-hda-no-powersave.conf
@@ -156,46 +163,62 @@ do_audio() {
 do_sleep() {
   section "Suspend / hibernate"
 
-  install_file etc/tmpfiles.d/zz-s2idle.conf \
-               /etc/tmpfiles.d/zz-s2idle.conf
+  # Forcing s2idle exists purely to protect the TAS2781 amps from an S3
+  # resume that leaves them unpowered. No amp, no reason to override
+  # mem_sleep.
+  if is_target_amp; then
+    install_file etc/tmpfiles.d/zz-s2idle.conf \
+                 /etc/tmpfiles.d/zz-s2idle.conf
+    if (( ! DRY )); then
+      sudo systemd-tmpfiles --create /etc/tmpfiles.d/zz-s2idle.conf >/dev/null 2>&1 || true
+    fi
 
-  install_file etc/systemd/sleep.conf.d/10-suspend-then-hibernate.conf \
-               /etc/systemd/sleep.conf.d/10-suspend-then-hibernate.conf
+    # mem_sleep_default=deep on the cmdline contradicts the tmpfiles rule. The
+    # tmpfiles rule wins today, but leaving both in place is a trap for
+    # whoever reads the cmdline next.
+    if grep -q 'mem_sleep_default=deep' /proc/cmdline; then
+      warn "kernel cmdline still carries mem_sleep_default=deep"
+      note "Harmless today (the tmpfiles rule overrides it) but contradictory."
+      note "Remove it by hand -- see docs/suspend.md. Not scripted: editing the"
+      note "bootloader config wrong leaves you unbootable."
+    fi
+  else
+    skip "no TAS2781 amp detected, s2idle is not required to protect it here"
+  fi
 
-  install_file etc/systemd/logind.conf.d/30-lid-suspend-then-hibernate.conf \
-               /etc/systemd/logind.conf.d/30-lid-suspend-then-hibernate.conf
+  # The warm-idle fix (suspend-then-hibernate) exists because Raptor Lake-HX,
+  # specifically on this board family, has no S0ix and measured ~2.65 W idle
+  # drain. That number hasn't been verified on other hardware, so this stays
+  # gated on the board it was measured on rather than a broader guess. See
+  # docs/hardware-detection.md.
+  if is_g615_board; then
+    install_file etc/systemd/sleep.conf.d/10-suspend-then-hibernate.conf \
+                 /etc/systemd/sleep.conf.d/10-suspend-then-hibernate.conf
+
+    install_file etc/systemd/logind.conf.d/30-lid-suspend-then-hibernate.conf \
+                 /etc/systemd/logind.conf.d/30-lid-suspend-then-hibernate.conf
+
+    # Hibernation must actually be provisioned or suspend-then-hibernate is a
+    # 30-minute countdown to nothing.
+    if command -v omarchy-hibernation-available >/dev/null 2>&1; then
+      if omarchy-hibernation-available >/dev/null 2>&1; then
+        ok "hibernation provisioned"
+      else
+        warn "hibernation is NOT available -- suspend-then-hibernate will not hibernate"
+        note "Run: omarchy-hibernate-setup  (or see docs/suspend.md)"
+      fi
+    elif ! grep -q '^resume=' /proc/cmdline && ! grep -q 'resume=' /proc/cmdline; then
+      warn "no resume= on the kernel cmdline; hibernation will not resume"
+    fi
+  else
+    skip "not the G615 board family the warm-idle (no-S0ix) fix was measured on"
+  fi
 
   # Omarchy's lock-before-suspend inhibitor needs longer than the 5 s default
-  # when a lid close also reconfigures displays.
+  # when a lid close also reconfigures displays. Generic to any Omarchy
+  # install, not gated on this laptop's hardware.
   install_file etc/systemd/logind.conf.d/20-inhibit-delay.conf \
                /etc/systemd/logind.conf.d/20-inhibit-delay.conf
-
-  if (( ! DRY )); then
-    sudo systemd-tmpfiles --create /etc/tmpfiles.d/zz-s2idle.conf >/dev/null 2>&1 || true
-  fi
-
-  # mem_sleep_default=deep on the cmdline contradicts the tmpfiles rule. The
-  # tmpfiles rule wins today, but leaving both in place is a trap for whoever
-  # reads the cmdline next.
-  if grep -q 'mem_sleep_default=deep' /proc/cmdline; then
-    warn "kernel cmdline still carries mem_sleep_default=deep"
-    note "Harmless today (the tmpfiles rule overrides it) but contradictory."
-    note "Remove it by hand -- see docs/suspend.md. Not scripted: editing the"
-    note "bootloader config wrong leaves you unbootable."
-  fi
-
-  # Hibernation must actually be provisioned or suspend-then-hibernate is a
-  # 30-minute countdown to nothing.
-  if command -v omarchy-hibernation-available >/dev/null 2>&1; then
-    if omarchy-hibernation-available >/dev/null 2>&1; then
-      ok "hibernation provisioned"
-    else
-      warn "hibernation is NOT available -- suspend-then-hibernate will not hibernate"
-      note "Run: omarchy-hibernate-setup  (or see docs/suspend.md)"
-    fi
-  elif ! grep -q '^resume=' /proc/cmdline && ! grep -q 'resume=' /proc/cmdline; then
-    warn "no resume= on the kernel cmdline; hibernation will not resume"
-  fi
 }
 
 # --------------------------------------------------------------- nvidia -----
@@ -203,8 +226,8 @@ do_sleep() {
 do_nvidia() {
   section "NVIDIA sleep units"
 
-  if ! lspci -d 10de: >/dev/null 2>&1 || ! lspci | grep -qi nvidia; then
-    note "no NVIDIA GPU found, skipping"
+  if ! has_nvidia_gpu; then
+    skip "no NVIDIA GPU detected"
     return
   fi
 
@@ -240,6 +263,16 @@ do_keyboard() {
     return
   fi
 
+  # aura_support.ron is one file shared across every board asusd knows about.
+  # Without this gate, running the patcher on any machine with asusctl
+  # installed rewrites the G615JM entry regardless of whether that's the
+  # board actually present.
+  if ! has_asus_nkey_keyboard; then
+    skip "no ASUS N-KEY (0b05:19b6) keyboard detected"
+    note "the G615JM entry this section patches isn't yours to rewrite"
+    return
+  fi
+
   install_file usr/local/bin/asusd-aura-zones /usr/local/bin/asusd-aura-zones 755
   install_file etc/pacman.d/hooks/zz-asusd-aura-zones.hook \
                /etc/pacman.d/hooks/zz-asusd-aura-zones.hook
@@ -262,6 +295,10 @@ do_theme() {
   fi
   if ! command -v omarchy >/dev/null 2>&1; then
     note "not Omarchy, skipping"
+    return
+  fi
+  if ! has_asus_nkey_keyboard; then
+    skip "no ASUS N-KEY (0b05:19b6) keyboard detected, no zones to repaint"
     return
   fi
 
@@ -296,6 +333,13 @@ do_menu() {
 
   local dest="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
   local key='"system.suspend"'
+
+  # This override exists to route Suspend at the warm-idle (no-S0ix) fix in
+  # do_sleep, gated the same way that is.
+  if ! is_g615_board; then
+    skip "not the G615 board family the suspend-then-hibernate rationale targets"
+    return
+  fi
 
   if [[ ! -d "$HOME/.config/omarchy" ]]; then
     note "no ~/.config/omarchy, skipping"
@@ -340,7 +384,8 @@ SECTIONS=()
 for arg in "$@"; do
   case "$arg" in
     --dry-run|-n) DRY=1 ;;
-    -h|--help)    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help)    sed -n '2,/^set -euo pipefail/p' "${BASH_SOURCE[0]}" \
+                    | sed '$d; s/^# \?//'; exit 0 ;;
     audio|sleep|keyboard|nvidia|menu|theme) SECTIONS+=("$arg") ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac

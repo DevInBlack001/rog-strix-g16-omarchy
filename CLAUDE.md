@@ -112,10 +112,12 @@ but *verified* gate over a broader but speculative one.
 `install.sh`'s `preflight()` uses the same library for its board/amp/
 keyboard warnings, so the two scripts can't drift out of sync on what
 "matches this hardware" means. `install.sh`'s per-section apply logic
-(`do_audio`, `do_keyboard`, etc.) is **not** yet gated the same way. It
-still applies unconditionally once a section is selected, only guarded by
-existing tool-presence checks (`need_pkg asusctl`, `lspci -d 10de:`). See
-"Generalizing to other hardware" below for where that's headed.
+(`do_audio`, `do_keyboard`, etc.) is now gated the same way (Phase 1 of
+`ROADMAP.md`): each hardware-specific section checks its predicate before
+writing anything and reports `N/A` via a new `skip()` helper otherwise,
+mirroring `check.sh`. This closed a real gap, not just a reporting one:
+`do_keyboard` used to patch `aura_support.ron`'s shared `G615JM` entry on
+any machine with `asusctl` installed, regardless of board.
 
 ## Generalizing to other hardware and brands
 
@@ -128,8 +130,9 @@ scaffolding around them, detection, gating, reporting, and eventually a
 per-board quirk registry, staged so a half-built generalization (detection
 without gated apply, or a schema nothing populates but the original board)
 never sits half-finished. Current phase: Phase 0 (detection and `check.sh`
-gating) is done; Phase 1 (gating `install.sh`'s apply logic the same way)
-is next and not yet started. See `ROADMAP.md` for phases 2 through 4 and
+gating) and Phase 1 (gating `install.sh`'s apply logic the same way) are
+both done. Phase 2 (a per-board quirk registry) is next and blocked on a
+second real hardware profile existing. See `ROADMAP.md` for phases 2 through 4 and
 the non-goals.
 
 ## Updates made in this session

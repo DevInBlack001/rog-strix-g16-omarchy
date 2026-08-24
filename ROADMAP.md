@@ -25,24 +25,27 @@ of a false `FAIL` on hardware that doesn't match. Verified against an
 unrelated HP laptop: reports `N/A` across the board, exits 0. See
 [docs/hardware-detection.md](docs/hardware-detection.md).
 
-Left undone on purpose: `install.sh`'s apply logic isn't gated the same
-way yet, only its preflight warnings are. That's Phase 1.
+## Phase 1: Gate `install.sh`, not just `check.sh` (done)
 
-## Phase 1: Gate `install.sh`, not just `check.sh`
-
-**Status: not started.**
-
-`do_audio`, `do_sleep`, `do_keyboard`, and the rest should check the
+`do_audio`, the s2idle-forcing and suspend-then-hibernate halves of
+`do_sleep`, `do_keyboard`, `do_theme`, and `do_menu` now check the
 matching `is_*`/`has_*` predicate from `lib/hardware-detect.sh` before
-writing anything hardware-specific, the same way `check.sh` already
-reports `N/A` instead of running a check that doesn't apply. No new
-detection logic is needed, this is wiring the library that already exists
-into the apply path instead of only the report path.
+writing anything hardware-specific, reporting `N/A` the same way
+`check.sh` already did. No new detection logic was needed, this was
+wiring the library that already existed into the apply path instead of
+only the report path.
 
-Exit criteria: running `./install.sh` unmodified on a non-G615 machine is
-a safe no-op for the hardware-specific sections (or only touches the
-genuinely generic ones, see Phase 3), not a script that writes irrelevant
-config and reports it as applied.
+One real gap this closed, not just a reporting nicety: `aura_support.ron`
+is one file shared across every board `asusd` knows about. Before this,
+running the keyboard section on *any* machine with `asusctl` installed
+would rewrite the `G615JM` entry in it regardless of whether that board
+was actually present. `do_keyboard` and `do_theme` are now gated on
+`has_asus_nkey_keyboard`, not just on `asusctl` being installed.
+
+Verified: `./install.sh --dry-run` on the same unrelated HP laptop used to
+verify Phase 0 now reports `N/A` for every hardware-specific section and
+"0 change(s) would be made," only the generic Omarchy inhibit-delay file
+still applies, correctly, since that one isn't hardware-specific.
 
 ## Phase 2: A quirk registry instead of a growing if/else
 
