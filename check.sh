@@ -107,20 +107,21 @@ else
   na "no TAS2781 amp detected -- deep/S3 suspend is likely safe here, s2idle is not required"
 fi
 
-# The measured ~2.65 W warm-idle number (and the fix for it) is specific to
-# this board family's CPU (Raptor Lake-HX, no S0ix). "No total_hw_sleep
-# counter" alone isn't a safe stand-in for that on unrelated hardware -- lots
-# of laptops lack the counter for unrelated reasons -- so gate the hard
-# pass/fail on the board this was actually measured on, and give everything
-# else an advisory instead of a false FAIL.
-if is_g615_board; then
+# The warm-idle fix (and its measured ~2.65 W number) targets a CPU class
+# (Intel HX-class, no S0ix), not a board. "No total_hw_sleep counter" alone
+# isn't a safe stand-in for that on unrelated hardware -- lots of laptops
+# lack the counter for unrelated reasons -- so the hard PASS/FAIL is gated
+# on the CPU class this was actually verified against, not a board name,
+# so it applies to any brand shipping the same chip. See
+# docs/hardware-detection.md.
+if is_no_s0ix_cpu; then
   if has_s0ix_counters && [[ "$(read_or /sys/power/suspend_stats/total_hw_sleep 0)" != 0 ]]; then
     na "total_hw_sleep > 0 -- this platform appears to support real S0ix after all"
     note "suspend-then-hibernate exists to work around platforms with NO S0ix."
     note "Yours may already sleep for real; verify before assuming you need it."
   else
-    note "total_hw_sleep = 0 is EXPECTED on this platform (Raptor Lake-HX has no"
-    note "S0ix). s2idle only freezes the OS. That is the platform floor, not a"
+    note "total_hw_sleep = 0 is EXPECTED on an Intel HX-class CPU (no S0ix)."
+    note "s2idle only freezes the OS. That is the platform floor, not a"
     note "misconfiguration -- hence suspend-then-hibernate."
     for f in /etc/systemd/sleep.conf.d/10-suspend-then-hibernate.conf \
              /etc/systemd/logind.conf.d/30-lid-suspend-then-hibernate.conf; do
@@ -128,11 +129,11 @@ if is_g615_board; then
     done
   fi
 else
-  na "not the G615 board family this warm-idle measurement was taken on"
+  na "not an Intel HX-class CPU, the warm-idle (no-S0ix) fix doesn't apply here"
   if has_s0ix_counters; then
     note "total_hw_sleep on your platform: $(read_or /sys/power/suspend_stats/total_hw_sleep 0)"
-    note "If it stays 0 across a real suspend, your CPU likely also lacks S0ix"
-    note "and the same suspend-then-hibernate reasoning may apply -- but"
+    note "If it stays 0 across a real suspend, your CPU may also lack S0ix"
+    note "and the same suspend-then-hibernate reasoning could apply -- but"
     note "re-measure your own idle draw before trusting these numbers."
   else
     note "no total_hw_sleep counter exposed at all; can't infer S0ix support"
@@ -161,10 +162,29 @@ fi
 
 section "Audio"
 
-if ! is_target_codec; then
-  na "audio codec is '${CODEC_NAME:-unknown}', not ALC294+TAS2781 -- skipping the"
-  note "codec-cache and soft-mixer checks below; they're specific to that combo."
-else
+# Soft-mixer and the alsa-gain-pinning unit are ACP/PipeWire/Omarchy config
+# problems, not specific to this codec or amp, checked regardless of
+# hardware match.
+if command -v pactl >/dev/null 2>&1 && pactl info >/dev/null 2>&1; then
+  if pactl list sinks 2>/dev/null | grep -q soft-mixer; then
+    fail "api.alsa.soft-mixer is active"
+    note "This is the one-way ratchet to silence: ACP applies its downward"
+    note "mixer writes on every port switch but never the upward ones."
+  else
+    pass "soft-mixer not in use ${D}(PipeWire owns the hardware mixer)${N}"
+  fi
+fi
+
+if systemctl --user is-enabled omarchy-fix-alsa-gain.service >/dev/null 2>&1; then
+  warn "omarchy-fix-alsa-gain.service is enabled"
+  note "With soft-mixer gone this unit fights ACP -- it forces Auto-Mute"
+  note "Enabled and unmutes both paths. Disable it."
+fi
+
+# power_save and idle-suspend exist to protect a fragile smart amp from
+# repeated power cycling, gated on the amp itself, not on ASUS or this
+# exact codec: any laptop with a TAS2781 needs the same protection.
+if is_target_amp; then
   ps_val="$(read_or /sys/module/snd_hda_intel/parameters/power_save '?')"
   if [[ "$ps_val" == 0 ]]; then
     pass "snd_hda_intel power_save = 0"
@@ -175,21 +195,12 @@ else
     note "-- not just modprobe.d/udev/tlp/PPD."
   fi
 
-  if command -v pactl >/dev/null 2>&1 && pactl info >/dev/null 2>&1; then
-    if pactl list sinks 2>/dev/null | grep -q soft-mixer; then
-      fail "api.alsa.soft-mixer is active"
-      note "This is the one-way ratchet to silence: ACP applies its downward"
-      note "mixer writes on every port switch but never the upward ones."
-    else
-      pass "soft-mixer not in use ${D}(PipeWire owns the hardware mixer)${N}"
-    fi
-
-    # Assert the property, not the state. A node that has not been opened since
-    # WirePlumber started is legitimately `suspended`; the rule only stops an
-    # *idle* node from being closed. Checking state alone false-alarms after every
-    # wireplumber restart.
-    if command -v pw-dump >/dev/null 2>&1; then
-      read -r tmo state < <(pw-dump 2>/dev/null | python3 -c "
+  # Assert the property, not the state. A node that has not been opened since
+  # WirePlumber started is legitimately `suspended`; the rule only stops an
+  # *idle* node from being closed. Checking state alone false-alarms after every
+  # wireplumber restart.
+  if command -v pw-dump >/dev/null 2>&1; then
+    read -r tmo state < <(pw-dump 2>/dev/null | python3 -c "
 import json, sys
 for o in json.load(sys.stdin):
     info = o.get('info') or {}
@@ -201,20 +212,24 @@ else:
     print('no-node', '?')
 " 2>/dev/null)
 
-      case "$tmo" in
-        0)       pass "built-in sink will not idle-suspend ${D}(timeout 0, currently $state)${N}"
-                 [[ "$state" == suspended ]] && note "suspended = nothing has played since wireplumber started; normal" ;;
-        no-node) warn "built-in analog sink not found" ;;
-        *)       fail "built-in sink suspend-timeout is '$tmo' ${D}(want 0)${N}"
-                 note "WirePlumber will close the PCM after 5 s idle, letting the"
-                 note "codec and amps drop power. Check 50-no-suspend-builtin-audio.conf." ;;
-      esac
-    fi
+    case "$tmo" in
+      0)       pass "built-in sink will not idle-suspend ${D}(timeout 0, currently $state)${N}"
+               [[ "$state" == suspended ]] && note "suspended = nothing has played since wireplumber started; normal" ;;
+      no-node) warn "built-in analog sink not found" ;;
+      *)       fail "built-in sink suspend-timeout is '$tmo' ${D}(want 0)${N}"
+               note "WirePlumber will close the PCM after 5 s idle, letting the"
+               note "codec and amps drop power. Check 50-no-suspend-builtin-audio.conf." ;;
+    esac
   fi
+else
+  na "no TAS2781 amp detected -- power-save/idle-suspend amp protection not needed here"
+fi
 
-  # The control cache can disagree with the codec's real amp registers. amixer,
-  # wpctl and pactl all read the cache, so they pass while the speakers are dead.
-  #
+# The control cache can disagree with the codec's real amp registers. amixer,
+# wpctl and pactl all read the cache, so they pass while the speakers are dead.
+# The exact DAC node addresses (0x02 headphone, 0x03 speaker) are ALC294-
+# specific, so unlike the checks above, this one genuinely needs this codec.
+if is_target_codec; then
   # Node 0x02 = Headphone DAC, node 0x03 = Speaker DAC. One of them reading
   # [0x00 0x00] is normal -- that is auto-mute muting the path that is not in use.
   # BOTH at zero is the stranded-cache failure.
@@ -239,12 +254,9 @@ else:
       [[ "$spk" == '[0x00 0x00]' ]] && note "speaker muted = auto-mute, headphones plugged in"
     fi
   fi
-
-  if systemctl --user is-enabled omarchy-fix-alsa-gain.service >/dev/null 2>&1; then
-    warn "omarchy-fix-alsa-gain.service is enabled"
-    note "With soft-mixer gone this unit fights ACP -- it forces Auto-Mute"
-    note "Enabled and unmutes both paths. Disable it."
-  fi
+else
+  na "audio codec is '${CODEC_NAME:-unknown}', not ALC294+TAS2781"
+  note "the codec-cache diagnostic needs this exact codec's DAC node addresses"
 fi
 
 # -------------------------------------------------------------- keyboard -----

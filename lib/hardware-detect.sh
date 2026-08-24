@@ -108,7 +108,13 @@ is_target_amp() {
   has_tas2781_amp
 }
 
-# The soft-mixer / power_save / codec-cache audio fixes target this codec.
+# Only the codec-cache diagnostic (specific ALC294 DAC node addresses,
+# 0x02/0x03) actually needs this exact codec+amp combination. The
+# soft-mixer and power_save fixes used to gate on this too, but the
+# soft-mixer fix isn't codec-specific (it's an ACP/PipeWire config issue
+# that only acts if a matching drop-in exists) and the power_save fix is
+# really an amp-protection concern, gated on has_tas2781_amp instead. See
+# do_audio in install.sh and the Audio section of check.sh.
 is_target_codec() {
   [[ "$(detect_codec_name)" == *ALC294* ]] && has_tas2781_amp
 }
@@ -116,4 +122,22 @@ is_target_codec() {
 # VMD is an Intel-only feature; nothing here applies on AMD platforms.
 is_vmd_capable_vendor() {
   [[ "$(detect_cpu_vendor)" == intel ]]
+}
+
+# The warm-idle problem (s2idle draws real power because there's no S0ix to
+# fall into) is a CPU-die limitation, not a board or brand one. Intel's own
+# naming marks it: the "HX" suffix (Core i9-14900HX, i7-13700HX, ...) is
+# Intel's mobile workstation-class line, sharing silicon with desktop parts,
+# and every laptop shipping one, ASUS, Dell, Lenovo, MSI, Razer, hits the
+# same lack of fine-grained idle states. Gating on the CPU model instead of
+# a board name is what lets the suspend-then-hibernate fix apply beyond this
+# one machine.
+#
+# Scoped to Intel only: that's what's actually been measured (Raptor
+# Lake-HX). AMD ships its own "HX" line (Ryzen 9 7940HX and similar) with a
+# different power-management architecture that hasn't been verified to have
+# the same problem, so it isn't included here, see the narrowest-verified-
+# signal rule in CLAUDE.md and ROADMAP.md before widening this.
+is_no_s0ix_cpu() {
+  [[ "$(detect_cpu_vendor)" == intel ]] && [[ "$(detect_cpu_model)" =~ [0-9]HX ]]
 }

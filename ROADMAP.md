@@ -51,9 +51,12 @@ still applies, correctly, since that one isn't hardware-specific.
 
 **Status: not started, blocked on a second real hardware profile existing.**
 
-`is_target_codec`, `is_target_amp`, and `is_g615_board` are single-hardware
-predicates baked directly into `lib/hardware-detect.sh`. That's fine for
-one board. It stops scaling the moment a second one shows up. Replace them
+`is_target_codec` and `has_asus_nkey_keyboard` (used for the keyboard zone
+patch) and `is_no_s0ix_cpu` (an Intel-only CPU-model check, see Phase 3)
+are still single-hardware or single-vendor predicates baked directly into
+`lib/hardware-detect.sh`. That's fine while there's one board and one
+verified CPU family. It stops scaling the moment a second board, or AMD's
+own HX-class chips, need their own entry. Replace the board-specific ones
 with small per-quirk profile files, one per board+codec+keyboard
 combination, e.g. `quirks/g615jmr.sh` as the first entry, each declaring
 its own match condition and the fix parameters that go with it (codec
@@ -68,20 +71,30 @@ repo doesn't need yet.
 Exit criteria: a second board's profile can be added as a new file without
 touching the predicates the first board depends on.
 
-## Phase 3: Split generic advice from hardware-specific payloads
-
-**Status: not started.**
+## Phase 3: Split generic advice from hardware-specific payloads (mostly done)
 
 Some of what's here is general Linux-laptop-power knowledge wearing this
-machine's numbers: VMD detection, s2idle-vs-S3 detection logic, the
-"diagnostics that lie on this hardware" list in the README. That part
-already applies broadly (VMD and NVIDIA gating are vendor-level, not
-board-level, as of Phase 0) and needs no quirk system at all. The amp,
-codec, and keyboard-specific payloads are what actually need the Phase 2
-registry.
+machine's numbers, or an ASUS badge it doesn't need. VMD and NVIDIA
+gating were already vendor-level, not board-level, as of Phase 0. Since
+then, the audio and sleep fixes went the same way: the soft-mixer/
+alsa-gain fixes in `do_audio` aren't gated on hardware at all (they're
+self-gating on the drop-in/service existing), the amp-protection fixes
+(`power_save`, idle-suspend) gate on `has_tas2781_amp`, not on ASUS or
+ALC294, and the warm-idle fix gates on `is_no_s0ix_cpu`, a CPU-model check
+for Intel's HX-class chips, not on the G615 board. See
+[docs/hardware-detection.md](docs/hardware-detection.md), "Not all of this
+is ASUS-only," for the full breakdown and the reasoning trail (the CPU gate
+went through a too-broad and a too-narrow version before landing here).
 
-Exit criteria: the README's "What gets fixed" table can honestly mark
-which rows apply broadly and which need your exact board.
+What's left: the keyboard zone patch stays genuinely ASUS-only (it edits
+`asusd`'s own device table, there's no non-ASUS equivalent), the
+codec-cache diagnostic stays ALC294-only (its DAC node addresses are
+codec-specific), and `is_no_s0ix_cpu` is scoped to Intel only, AMD's own
+HX-class chips are a plausible extension but unverified, see the scoping
+note in `lib/hardware-detect.sh` before widening it.
+
+Exit criteria (done): the README's "What gets fixed" table marks which
+rows apply broadly and which need this exact board or an ASUS keyboard.
 
 ## Phase 4: Accept community-contributed profiles
 

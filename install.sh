@@ -77,25 +77,36 @@ preflight() {
     ok "board $board"
   else
     warn "board reads '$board', not a G615* ROG Strix G16"
-    note "These fixes are written for the G615JMR. Sections below now gate"
-    note "themselves on the hardware they target and will report N/A rather"
-    note "than write anything irrelevant, but Ctrl-C now if you'd rather not"
-    note "run this at all on unfamiliar hardware."
+    note "This repo was written for the G615JMR, but most fixes below gate on"
+    note "the actual hardware they target (an amp, a CPU class, a keyboard),"
+    note "not on this board name, and will report N/A rather than write"
+    note "anything irrelevant. Only the keyboard zone patch is ASUS-only."
+    note "Ctrl-C now if you'd rather not run this at all on unfamiliar hardware."
     sleep 5
   fi
 
   if is_target_amp; then
-    ok "TAS2781 amp detected, audio/suspend fixes apply"
+    ok "TAS2781 amp detected, amp-protection audio/suspend fixes apply"
   else
-    note "no TAS2781 amp detected, the audio section and the s2idle-forcing"
-    note "part of sleep will report N/A below."
+    note "no TAS2781 amp detected, the amp-protection parts of audio and"
+    note "sleep will report N/A below (not ASUS-specific, any brand with"
+    note "this amp needs them)."
+  fi
+
+  if is_no_s0ix_cpu; then
+    ok "Intel HX-class CPU detected, warm-idle (no-S0ix) fix applies"
+  else
+    note "not an Intel HX-class CPU, the suspend-then-hibernate and menu"
+    note "sections will report N/A below (not board-specific, any brand"
+    note "shipping this CPU class hits the same problem)."
   fi
 
   if has_asus_nkey_keyboard; then
     ok "ASUS N-KEY keyboard detected, zone patch applies"
   else
     note "no ASUS N-KEY (0b05:19b6) keyboard detected, the keyboard and"
-    note "theme sections will report N/A below."
+    note "theme sections will report N/A below. This one genuinely is"
+    note "ASUS-only, it patches asusd's own device table."
   fi
 
   if [[ -r /etc/os-release ]] && grep -q '^ID=omarchy' /etc/os-release; then
@@ -112,22 +123,14 @@ preflight() {
 # ---------------------------------------------------------------- audio -----
 
 do_audio() {
-  section "Audio (ALC294 + TAS2781 amps)"
+  section "Audio (ACP mixer + TAS2781 amp protection)"
 
-  if ! is_target_codec; then
-    skip "codec is '$(detect_codec_name)', not ALC294+TAS2781, nothing to do here"
-    return
-  fi
-
-  install_file etc/modprobe.d/90-snd-hda-no-powersave.conf \
-               /etc/modprobe.d/90-snd-hda-no-powersave.conf
-
-  install_file home/.config/wireplumber/wireplumber.conf.d/50-no-suspend-builtin-audio.conf \
-               "$HOME/.config/wireplumber/wireplumber.conf.d/50-no-suspend-builtin-audio.conf"
-
-  # The soft-mixer drop-in is the root cause of the recurring silence: with it
-  # set, PipeWire's ACP applies its downward mixer writes on every port switch
-  # but never the matching upward ones. See docs/audio.md.
+  # The soft-mixer ratchet and the alsa-gain-pinning unit are ACP/PipeWire/
+  # Omarchy config problems, not specific to this codec or amp: PipeWire's
+  # ACP does jack-based port switching on any Realtek laptop codec it
+  # manages this way, not just ALC294. Both blocks below only act if the
+  # specific drop-in or service they target actually exists, so they're
+  # safe to run on any hardware, nothing to gate here. See docs/audio.md.
   local sm
   for sm in "$HOME"/.config/wireplumber/wireplumber.conf.d/*.conf; do
     [[ -f "$sm" ]] || continue
@@ -144,18 +147,29 @@ do_audio() {
     (( DRY )) || systemctl --user disable --now omarchy-fix-alsa-gain.service
   fi
 
-  # A late boot-time writer can silently override modprobe.d. This one bit us.
-  if [[ -x /usr/local/bin/omarchy-powersave-tune ]] \
-     && grep -qE '^[^#]*snd_hda_intel/parameters/power_save' /usr/local/bin/omarchy-powersave-tune 2>/dev/null; then
-    warn "/usr/local/bin/omarchy-powersave-tune writes power_save at boot"
-    note "It runs after modprobe, so it silently overrides the modprobe.d file."
-    note "Comment that line out by hand; see docs/audio.md."
+  # Everything below exists to protect a fragile smart amp from repeated
+  # power cycling. Gated on the amp itself, not on ASUS or this exact
+  # codec: any laptop with a TAS2781 benefits, regardless of brand.
+  if is_target_amp; then
+    install_file etc/modprobe.d/90-snd-hda-no-powersave.conf \
+                 /etc/modprobe.d/90-snd-hda-no-powersave.conf
+
+    install_file home/.config/wireplumber/wireplumber.conf.d/50-no-suspend-builtin-audio.conf \
+                 "$HOME/.config/wireplumber/wireplumber.conf.d/50-no-suspend-builtin-audio.conf"
+
+    # A late boot-time writer can silently override modprobe.d. This one bit us.
+    if [[ -x /usr/local/bin/omarchy-powersave-tune ]] \
+       && grep -qE '^[^#]*snd_hda_intel/parameters/power_save' /usr/local/bin/omarchy-powersave-tune 2>/dev/null; then
+      warn "/usr/local/bin/omarchy-powersave-tune writes power_save at boot"
+      note "It runs after modprobe, so it silently overrides the modprobe.d file."
+      note "Comment that line out by hand; see docs/audio.md."
+    fi
+    note "power_save takes effect on reboot (or: sudo modprobe -r snd_hda_intel)"
+  else
+    skip "no TAS2781 amp detected, skipping the power-save/idle-suspend fixes"
   fi
 
-  if (( ! DRY )); then
-    systemctl --user restart wireplumber 2>/dev/null || true
-  fi
-  note "power_save takes effect on reboot (or: sudo modprobe -r snd_hda_intel)"
+  (( DRY )) || systemctl --user restart wireplumber 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------- sleep -----
@@ -186,12 +200,13 @@ do_sleep() {
     skip "no TAS2781 amp detected, s2idle is not required to protect it here"
   fi
 
-  # The warm-idle fix (suspend-then-hibernate) exists because Raptor Lake-HX,
-  # specifically on this board family, has no S0ix and measured ~2.65 W idle
-  # drain. That number hasn't been verified on other hardware, so this stays
-  # gated on the board it was measured on rather than a broader guess. See
+  # The warm-idle fix (suspend-then-hibernate) exists because this CPU class
+  # (Intel's "HX" mobile workstation line) has no S0ix. That's a CPU-die
+  # limitation, not a G615JMR-specific one: any laptop built on an Intel
+  # HX-class chip hits the same problem, regardless of brand. The measured
+  # ~2.65 W number is specific to this machine; the mechanism isn't. See
   # docs/hardware-detection.md.
-  if is_g615_board; then
+  if is_no_s0ix_cpu; then
     install_file etc/systemd/sleep.conf.d/10-suspend-then-hibernate.conf \
                  /etc/systemd/sleep.conf.d/10-suspend-then-hibernate.conf
 
@@ -211,7 +226,7 @@ do_sleep() {
       warn "no resume= on the kernel cmdline; hibernation will not resume"
     fi
   else
-    skip "not the G615 board family the warm-idle (no-S0ix) fix was measured on"
+    skip "not an Intel HX-class CPU, the warm-idle (no-S0ix) fix doesn't apply here"
   fi
 
   # Omarchy's lock-before-suspend inhibitor needs longer than the 5 s default
@@ -336,8 +351,8 @@ do_menu() {
 
   # This override exists to route Suspend at the warm-idle (no-S0ix) fix in
   # do_sleep, gated the same way that is.
-  if ! is_g615_board; then
-    skip "not the G615 board family the suspend-then-hibernate rationale targets"
+  if ! is_no_s0ix_cpu; then
+    skip "not an Intel HX-class CPU, the suspend-then-hibernate rationale doesn't apply here"
     return
   fi
 

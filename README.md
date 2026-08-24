@@ -54,18 +54,24 @@ do it for you: **[docs/bios.md](docs/bios.md)**.
 
 ## What gets fixed
 
-| Problem | Fix | Where |
-|---|---|---|
-| **Idles at 21.5 W, ~4 h on battery** | Disable Intel VMD in BIOS → **13.0 W, ~6.8 h** | [bios.md](docs/bios.md) *(manual)* |
-| Speakers dead after suspend, only a cold boot revives them | Force s2idle; never S3 | [suspend.md](docs/suspend.md) |
-| Warm in the bag after a long "suspend" | `suspend-then-hibernate`, 30 min | [suspend.md](docs/suspend.md) |
-| Hibernate resume fails with `-5` | Enable the four `nvidia-*.service` sleep units | [suspend.md](docs/suspend.md) |
-| Audio goes quiet or silent, keeps coming back | Remove the `soft-mixer` drop-in; let PipeWire own the mixer | [audio.md](docs/audio.md) |
-| Speakers crackle / drop out when idle | `snd_hda_intel power_save=0` + no WirePlumber idle-suspend | [audio.md](docs/audio.md) |
-| `asusctl aura ... --zone N` returns `NotSupported` | Patch the four zones into `aura_support.ron`, pinned by a pacman hook | [keyboard.md](docs/keyboard.md) |
-| Super key stops working | It's a firmware lock. Press **Fn+Super** (twice) | [keyboard.md](docs/keyboard.md) |
-| Keyboard is one flat colour per theme | Spread the theme across all four zones, re-applied at boot | [keyboard.md](docs/keyboard.md) |
-| Wi-Fi bar icon shows disconnected on a working link | NM profile missing `802-11-wireless.mode` | [network.md](docs/network.md) |
+The **Applies to** column is what `check.sh`/`install.sh` actually gate
+each fix on, not a guess. "This board" fixes stay narrow on purpose, see
+[ROADMAP.md](ROADMAP.md); everything else already targets the underlying
+hardware or software trait, not the ASUS badge, and will self-detect on
+other brands that share it.
+
+| Problem | Fix | Applies to | Where |
+|---|---|---|---|
+| **Idles at 21.5 W, ~4 h on battery** | Disable Intel VMD in BIOS → **13.0 W, ~6.8 h** | Any Intel laptop | [bios.md](docs/bios.md) *(manual)* |
+| Speakers dead after suspend, only a cold boot revives them | Force s2idle; never S3 | Any laptop with a TAS2781 amp | [suspend.md](docs/suspend.md) |
+| Warm in the bag after a long "suspend" | `suspend-then-hibernate`, 30 min | Any Intel HX-class CPU | [suspend.md](docs/suspend.md) |
+| Hibernate resume fails with `-5` | Enable the four `nvidia-*.service` sleep units | Any NVIDIA GPU | [suspend.md](docs/suspend.md) |
+| Audio goes quiet or silent, keeps coming back | Remove the `soft-mixer` drop-in; let PipeWire own the mixer | Any Realtek+ACP setup (self-checking) | [audio.md](docs/audio.md) |
+| Speakers crackle / drop out when idle | `snd_hda_intel power_save=0` + no WirePlumber idle-suspend | Any laptop with a TAS2781 amp | [audio.md](docs/audio.md) |
+| `asusctl aura ... --zone N` returns `NotSupported` | Patch the four zones into `aura_support.ron`, pinned by a pacman hook | This board (G615JMR) | [keyboard.md](docs/keyboard.md) |
+| Super key stops working | It's a firmware lock. Press **Fn+Super** (twice) | ASUS N-KEY keyboard | [keyboard.md](docs/keyboard.md) |
+| Keyboard is one flat colour per theme | Spread the theme across all four zones, re-applied at boot | This board (G615JMR) | [keyboard.md](docs/keyboard.md) |
+| Wi-Fi bar icon shows disconnected on a working link | NM profile missing `802-11-wireless.mode` | Any Omarchy install | [network.md](docs/network.md) |
 
 ---
 

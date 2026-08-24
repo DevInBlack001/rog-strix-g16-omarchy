@@ -131,9 +131,16 @@ per-board quirk registry, staged so a half-built generalization (detection
 without gated apply, or a schema nothing populates but the original board)
 never sits half-finished. Current phase: Phase 0 (detection and `check.sh`
 gating) and Phase 1 (gating `install.sh`'s apply logic the same way) are
-both done. Phase 2 (a per-board quirk registry) is next and blocked on a
-second real hardware profile existing. See `ROADMAP.md` for phases 2 through 4 and
-the non-goals.
+both done. Phase 3 (splitting generic fixes from hardware-specific ones)
+is mostly done too, out of strict order, because it turned out to be
+tractable without Phase 2's registry: `is_target_amp` and the new
+`is_no_s0ix_cpu` (Intel HX-class CPU model check) already generalize the
+audio and sleep fixes across brands without inventing any schema, so
+landing it didn't skip ahead in the way the roadmap's non-goals warn
+against. Phase 2 (a per-board quirk registry, needed for the keyboard zone
+patch and the codec-cache diagnostic, which stay genuinely board/codec-
+specific) is next and blocked on a second real hardware profile existing.
+See `ROADMAP.md` for the full detail and the non-goals.
 
 ## Updates made in this session
 
@@ -156,3 +163,14 @@ the non-goals.
   Phases 0 through 4. Condensed this file's "Generalizing to other
   hardware" section to a pointer at it, so the plan has one source of
   truth instead of two copies that can drift.
+- 2026-08-24: Gated Phase 1's apply logic on the actual mechanism instead
+  of ASUS/board identity where the evidence supports it (Phase 3, done out
+  of order because it needed no registry): moved the soft-mixer/alsa-gain
+  audio fixes off `is_target_codec` entirely (self-gating, not
+  hardware-specific), regated amp-protection audio fixes onto
+  `is_target_amp` instead of the ALC294+TAS2781 combo, and added
+  `is_no_s0ix_cpu` (Intel HX-class CPU model check) to replace
+  `is_g615_board` for the suspend-then-hibernate and menu fixes. Updated
+  `check.sh` to match. Updated README's "What gets fixed" table with an
+  "Applies to" column, `docs/hardware-detection.md`, and `ROADMAP.md`
+  (Phase 3 marked mostly done) to match.
