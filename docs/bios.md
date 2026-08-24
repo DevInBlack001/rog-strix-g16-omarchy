@@ -15,7 +15,7 @@ synthetic PCIe domain. Links managed that way can't negotiate ASPM, so the CPU
 package never gets below PC2 and sits there burning 8–12 W it doesn't need to.
 
 The measured penalty matched that theory exactly. Nothing in userspace recovers
-it — see "what doesn't work" below.
+it. See "what doesn't work" below.
 
 ## Doing it
 
@@ -33,7 +33,7 @@ lspci -D | grep -i nvme      # no 10000: prefix any more
 > BIOS re-enumerated the two drives in the **opposite order** after the change.
 > Identify disks by size or label, never by PCI address.
 
-## If you dual-boot Windows — read this first
+## If you dual-boot Windows: read this first
 
 **Windows will not boot with VMD off** until you prepare it. Its boot-critical
 storage driver is Intel `iaStorVD`, and `stornvme` is disabled via
@@ -89,16 +89,16 @@ Before you trust any number:
   `/sys/bus/pci/devices/0000:01:00.0/power/runtime_status` = `suspended`. An
   awake RTX 5060 adds 5–13 W and swamps whatever you're measuring.
 - **Never poll `nvidia-smi` during a measurement.** Each call wakes the GPU and
-  blocks runtime suspend — the observer creates the problem. sysfs only.
+  blocks runtime suspend, the observer creates the problem. sysfs only.
 - **Unplug HDMI.** It's wired to the dGPU (`card1-HDMI-A-1`; the internal eDP is
   on the iGPU as `card2`), so a plugged cable keeps the card awake.
-- Don't run `turbostat` alongside a battery sample — it wakes every CPU on every
+- Don't run `turbostat` alongside a battery sample, it wakes every CPU on every
   interval.
 - Sample `power_now` over **≥15 readings**. `energy_now` moves in 882000 µWh
   steps (1% of capacity), so short-window energy deltas are pure quantization
   noise.
 
-Also: this CPU has **no PC10 or S0ix counters** — Raptor Lake-HX doesn't
+Also: this CPU has **no PC10 or S0ix counters**, Raptor Lake-HX doesn't
 implement them. `turbostat` errors with `Counter 'Pkg%pc10' can not be added`
 and the LPIT sysfs counters read a constant 0. That's not evidence of anything.
 Use `Pkg%pc2`/`pc3`/`pc6`, and prefer a bare `turbostat --Summary --quiet` over

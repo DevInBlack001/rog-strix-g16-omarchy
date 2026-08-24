@@ -13,7 +13,7 @@ asusctl aura effect rainbow-wave --direction right --speed med
 ```
 
 The wave breaks into distinct blocks rather than shading key to key. Do this
-test before promising anyone a single-key colour — it costs one command.
+test before promising anyone a single-key colour, it costs one command.
 
 **Zone 1 is the leftmost vertical band**: QWER + ASDF, along with Esc, Tab,
 Caps, LShift, LCtrl, 1–5 and ZXCV. That band is the finest grain available on
@@ -22,7 +22,7 @@ this machine.
 ### asusd's device table is wrong for this board
 
 `/usr/share/asusd/aura_support.ron` has **no `G615JMR` entry**, so the board
-name prefix-matches `G615JM` — which ships `basic_zones: []`. With no zones
+name prefix-matches `G615JM`, which ships `basic_zones: []`. With no zones
 declared, asusd refuses every zoned effect:
 
 ```
@@ -44,37 +44,37 @@ asusctl aura effect static -c ff0066 --zone 1
 
 ### Why it needs a pacman hook
 
-asusd reads **only** `/usr/share/asusd/aura_support.ron` — verified against the
+asusd reads **only** `/usr/share/asusd/aura_support.ron`, verified against the
 binary's strings. There is no `/etc/asusd` override for it. So the edit lands in
 a packaged file, and any `asusctl` upgrade (including via `omarchy update`)
 reverts it **silently**.
 
 This repo installs:
 
-- `/usr/local/bin/asusd-aura-zones` — idempotent Python patcher. It recognises
+- `/usr/local/bin/asusd-aura-zones`: idempotent Python patcher. It recognises
   an upstream fix instead of clobbering it, and *warns rather than failing the
   transaction* if the entry disappears.
-- `/etc/pacman.d/hooks/zz-asusd-aura-zones.hook` — fires it on asusctl
+- `/etc/pacman.d/hooks/zz-asusd-aura-zones.hook`: fires it on asusctl
   Install/Upgrade.
 
 Simulated an upgrade to confirm it re-patches.
 
 **Zone colours themselves need no re-applying.** asusd persists them to
-`/etc/asusd/aura_19b6.ron` (`multizone_on: true`) and restores them at boot —
+`/etc/asusd/aura_19b6.ron` (`multizone_on: true`) and restores them at boot,
 unlike the ALSA gains in [audio.md](audio.md).
 
 ### If upstream renames the entry
 
 The patcher prints to stderr and exits 0 rather than breaking your upgrade.
 `check.sh` will report `no G615JM entry`. At that point check whether upstream
-added a real `G615JMR` entry with proper zones — if so, this fix is obsolete and
+added a real `G615JMR` entry with proper zones. If so, this fix is obsolete and
 you can drop the hook.
 
 ---
 
 ## Making the zones follow the Omarchy theme
 
-**Omarchy already themes the keyboard — check before building anything.**
+**Omarchy already themes the keyboard: check before building anything.**
 `omarchy-theme-set` calls `omarchy-theme-set-keyboard`, which calls
 `omarchy-theme-set-keyboard-asus-rog`:
 
@@ -85,7 +85,7 @@ asusctl aura effect static -c "$color"
 
 That is **one flat colour across the whole keyboard** (no `--zone`). The colour
 comes from the theme's `keyboard.rgb`, generated from the
-`{{ accent }}` template — though a theme may ship its own (tokyo-night ships
+`{{ accent }}` template, though a theme may ship its own (tokyo-night ships
 `ff00ff` rather than its accent).
 
 Since this board has four addressable bands, `omarchy-theme-set-keyboard-zones`
@@ -104,7 +104,7 @@ Modes, via `MODE` in `~/.config/omarchy/keyboard-zones.conf` (or one-shot,
 |---|---|
 | `gradient` *(default)* | Ramp from the theme colour to a contrasting palette colour |
 | `palette` | Four distinct hues from the theme palette |
-| `accent` | Flat — same as stock Omarchy |
+| `accent` | Flat, same as stock Omarchy |
 
 Examples of what `gradient` produces:
 
@@ -121,13 +121,13 @@ Two details that matter:
   lerp between two saturated colours dips muddy through the middle.
 - **Monochrome themes** (vantablack, white, solitude) have no second hue to ramp
   to, so it falls back to a brightness ramp. `palette` mode simply flattens on
-  those — which is why `gradient` is the default.
+  those, which is why `gradient` is the default.
 
 ### ⚠ `multizone_on` stays `false`, so zones do not survive a reboot
 
 This is the part that isn't obvious. Setting a zone with
 `asusctl aura effect static -c <hex> --zone <n>` **does** reach the hardware
-immediately — verified visually with a red/green/blue/white test pattern. But
+immediately, verified visually with a red/green/blue/white test pattern. But
 asusd stores it with `multizone_on: false` in `/etc/asusd/aura_19b6.ron`, and
 `LedModeData` keeps reporting `zone 0` with the flat colour:
 
@@ -149,7 +149,7 @@ busctl --system set-property xyz.ljones.Asusd /xyz/ljones/aura/19b6_2_4 \
 **Hence the `post-boot` hook.** Rather than fight `multizone_on`, just re-apply
 the zones after boot. The script waits up to 10 s for asusd (`ASUSD_WAIT`) so it
 doesn't lose the race at startup, and exits 0 silently on any machine without
-asusctl, without a running asusd, or without zone support — a hook must never
+asusctl, without a running asusd, or without zone support, a hook must never
 break a theme switch.
 
 ---
@@ -172,7 +172,7 @@ but never keycode 125/126. And there's no software toggle to reach for:
 `asusctl armoury list` and the `xyz.ljones.Asusd` D-Bus tree expose no win-key
 attribute.
 
-Clearing it is equally persistent — after two presses, Super still worked
+Clearing it is equally persistent: after two presses, Super still worked
 following a full reboot. **So a Super key that's dead again after a reboot means
 the toggle got hit again, not that the fix didn't stick.**
 
@@ -198,7 +198,7 @@ fine and the fault is the firmware lock.
 ### Two dead ends worth skipping
 
 - **`wtype` cannot test this.** Hyprland doesn't fire keybinds from
-  virtual-keyboard input — a synthetic bind with *no* modifier fails too, so a
+  virtual-keyboard input, a synthetic bind with *no* modifier fails too, so a
   negative result proves nothing.
 - **`hyprctl keyword` is rejected on a Lua config** ("can't work with
   non-legacy parsers"). Use

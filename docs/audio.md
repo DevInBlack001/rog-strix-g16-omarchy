@@ -18,7 +18,7 @@ Many Realtek "muffled audio" recipes tell you to set
 along these lines. **On this machine it is the bug.**
 
 PipeWire's ACP (alsa-card-profile) does its own jack-based port switching, and
-its path files *do* write ALSA controls —
+its path files *do* write ALSA controls, in
 `/usr/share/alsa-card-profile/mixer/paths/`:
 
 - `analog-output-speaker.conf` sets `[Element Auto-Mute Mode] → Option Disabled`
@@ -28,7 +28,7 @@ its path files *do* write ALSA controls —
   volume = off`.
 
 With `soft-mixer` on, ACP still applies those **downward** writes on every port
-selection — but `volume = merge` on the newly-active path is suppressed. So
+selection, but `volume = merge` on the newly-active path is suppressed. So
 PipeWire turns the hardware gains **down and never back up**.
 
 A one-way ratchet to silence, re-armed on every headphone plug/unplug and every
@@ -38,7 +38,7 @@ port re-selection. That's why it kept coming back.
 drop-in in `~/.config/wireplumber/wireplumber.conf.d/` that mentions
 `api.alsa.soft-mixer`, renaming it to `.disabled-<epoch>` rather than deleting.
 
-Verified afterwards: the speaker DAC (node `0x03`) tracks the `wpctl` slider —
+Verified afterwards: the speaker DAC (node `0x03`) tracks the `wpctl` slider,
 0.30 → `0x2e`, 0.60 → `0x46`, 1.00 → `0x57`. Self-healing. No manual pinning.
 
 ```sh
@@ -49,7 +49,7 @@ pactl list sinks | grep soft-mixer      # should print nothing
 
 ACP sets it deliberately because it handles port switching itself. **Do not
 "fix" it back to Enabled.** A login script that forces `Auto-Mute Enabled` and
-unmutes both paths actively fights ACP — that's the opposite of what it wants.
+unmutes both paths actively fights ACP, that's the opposite of what it wants.
 If you have such a unit (e.g. `omarchy-fix-alsa-gain.service`), disable it.
 `install.sh` does.
 
@@ -73,7 +73,7 @@ that are already fragile across PM transitions.
 WirePlumber otherwise closes an idle node after 5 s, which lets the codec drop
 regardless of the module parameter. The rule sets
 `session.suspend-timeout-seconds = 0`, scoped by node name to the built-in card
-so **HDMI and Bluetooth sinks still suspend normally** — that matters, because
+so **HDMI and Bluetooth sinks still suspend normally**, that matters, because
 the dGPU audio function needs to reach D3 for the GPU to sleep.
 
 (In `suspend-node.lua` a timeout of 0 hits an explicit `return`, so 0 really
@@ -93,7 +93,7 @@ This cost a full debugging session. `power_save` read **1** at runtime while
 `modprobe -c` correctly resolved to 0. Nothing in modprobe.d, udev, tlp or PPD
 set it.
 
-The culprit was `/usr/local/bin/omarchy-powersave-tune` — a hand-written,
+The culprit was `/usr/local/bin/omarchy-powersave-tune`, a hand-written,
 unpackaged script run by `omarchy-powersave.service` with
 `After=multi-user.target`. It did `echo 1 > /sys/module/snd_hda_intel/parameters/power_save`.
 Because it runs long *after* modprobe, it silently overrode the modprobe.d file
@@ -115,7 +115,7 @@ nothing set a module parameter.
 
 `power_save=0` is a **global** module parameter. If the NVIDIA HDMI codec
 (`hdaudioC1D0`) is ever woken, it may be forbidden from re-suspending and could
-hold `0000:01:00.1` — and with it D3cold on the dGPU — costing the idle-power
+hold `0000:01:00.1`, and with it D3cold on the dGPU, costing the idle-power
 win from [bios.md](bios.md). It reads `auto`/`suspended` today.
 
 **Before blaming audio config for a dGPU that won't sleep, run
@@ -152,7 +152,7 @@ Also check `Pin-ctls` to see which path auto-mute selected: `0x17` (speaker,
 `0x40` = live, `0x00` = off) and `0x21` (headphone, `0xc0` = live).
 
 > Silence on **both** speakers and headphones rules out the TAS2781 amps
-> entirely — headphones don't pass through them. Look for a common-mode fault at
+> entirely, headphones don't pass through them. Look for a common-mode fault at
 > the codec instead.
 
 ### Why re-running a fix script doesn't help
@@ -170,7 +170,7 @@ amixer -c 0 sset Speaker 100%
 # verified: 0x00 -> 0x2c -> 0x57
 ```
 
-The same staleness applies to `Auto-Mute Mode` — writing the value it already
+The same staleness applies to `Auto-Mute Mode`, writing the value it already
 holds may not re-run the driver's automute evaluation, leaving both the speaker
 and headphone pins live at once. Toggle Disabled → Enabled rather than
 re-writing the current value.
@@ -184,7 +184,7 @@ loads fine and `Speaker Analog Volume` sits at max 20/20. Only one of the three
 instantiated `tas2781-hda` I2C devices binds to the codec, which looks alarming
 and is unrelated to volume.
 
-**`sudo alsactl store 0` is not a fix — it actively regresses.** After a reboot
+**`sudo alsactl store 0` is not a fix, it actively regresses.** After a reboot
 the speakers were silent again with `/var/lib/alsa/asound.state` itself holding
 `Speaker Playback Volume 0` / `Switch false`. The state file's mtime was 22 s
 *before* that boot: `alsa-store` saves the mixer at shutdown **after** the
@@ -192,7 +192,7 @@ controls have already been reset, and `alsa-restore` replays those zeros at
 boot. A self-perpetuating mute.
 
 **`Master Playback Volume` (numid=15) is an ALSA vmaster** slaving Headphone and
-Speaker — confirmed because DAC node `0x03`'s `Amp-Out vals` tracked the vmaster
+Speaker, confirmed because DAC node `0x03`'s `Amp-Out vals` tracked the vmaster
 value (`0x3c` = 60), not the slave's 87. It attenuates speakers and headphones
 alike.
 
@@ -201,7 +201,7 @@ mid-left-channel and fakes a very convincing "only one side works" symptom.
 
 **Don't infer hardware state from PipeWire.** `pactl` advertises
 `Flags: HARDWARE DECIBEL_VOLUME` on this card while applying volume in software.
-For any level problem, dump `amixer -c 0 contents` and read the gain stages —
+For any level problem, dump `amixer -c 0 contents` and read the gain stages,
 then confirm against the codec node dump above, since even `amixer` reads the
 cache.
 

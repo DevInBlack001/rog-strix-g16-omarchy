@@ -1,6 +1,6 @@
 # Wi-Fi: bar icon shows disconnected on a working link
 
-Not machine-specific — this hits any Omarchy install with an NM profile written
+Not machine-specific, this hits any Omarchy install with an NM profile written
 by a third-party installer. Included because it wasted an afternoon and the
 symptom points nowhere near the cause.
 
@@ -11,9 +11,9 @@ The Omarchy bar renders the 󰤮 no-connection icon while the link works perfect
 
 ## Cause
 
-The profile — created by the [eduroam CAT
+The profile, created by the [eduroam CAT
 installer](https://cat.eduroam.org/), CA cert at
-`~/.config/cat_installer/ca.pem` — had **no `802-11-wireless.mode` key at all**.
+`~/.config/cat_installer/ca.pem`, had **no `802-11-wireless.mode` key at all**.
 
 NetworkManager treats a missing mode as infrastructure. Quickshell's
 `Quickshell.Networking` NM backend (quickshell-git 0.3.0.r20, shipped by Omarchy
