@@ -119,53 +119,18 @@ existing tool-presence checks (`need_pkg asusctl`, `lspci -d 10de:`). See
 
 ## Generalizing to other hardware and brands
 
-Current state: `lib/hardware-detect.sh` has predicates for exactly one
-machine's hardware (`is_target_amp`, `is_target_codec`, `is_g615_board`,
-plus the vendor-level `is_vmd_capable_vendor`/`has_nvidia_gpu` which are
-already generic). `check.sh` uses them to report applicability; `install.sh`
-does not yet refuse to apply a fix on hardware it doesn't match.
-
-The fixes themselves mostly *can't* generalize: they're keyed to exact
-hardware behavior (this codec's node addresses, this board's
-`aura_support.ron` entry, this specific i2c failure mode). What can
-generalize is the scaffolding around them. Planned direction, roughly in
-order:
-
-1. **Gate `install.sh`'s apply logic, not just its warnings.** Each
-   `do_*` function should check the matching `is_*`/`has_*` predicate
-   before writing anything hardware-specific, the way `check.sh` already
-   does for reporting. Falls out of the same library `check.sh` already
-   uses; no new detection logic needed for this step, just wiring.
-
-2. **Turn the one-off predicates into a lookup, not a growing if/else.**
-   As soon as a second board or codec is added, `is_target_codec`-style
-   single-hardware predicates stop scaling. Replace them with small
-   per-quirk profile files (e.g. `quirks/g615jmr.sh`, one per
-   board+codec+keyboard combination) that each declare their own match
-   condition and which fix parameters apply (codec SSID, zone count,
-   keyboard USB ID, measured idle-power numbers). `lib/hardware-detect.sh`
-   stays the fingerprinting layer; a new `lib/quirks.sh` would load and
-   match profiles against the fingerprint, closer to how the kernel's own
-   HDA quirk tables or `fwupd`'s device quirks work.
-
-3. **Split generic advice from hardware-specific payloads.** Some of what's
-   here is really generic Linux-laptop-power knowledge wearing this
-   machine's numbers (VMD detection, s2idle-vs-S3 detection, the
-   diagnostics-that-lie list in the README). That part could apply broadly
-   today with no quirk system at all. The amp/codec/keyboard-specific
-   payloads are what actually need the quirk-registry from step 2.
-
-4. **Accept community-contributed profiles.** The README's Contributing
-   section already invites reports from other G615-series owners. Once
-   step 2 exists, "open a PR with your board's profile file" becomes a
-   concrete, low-effort ask instead of "fork the whole repo."
-
-Do not attempt to jump straight to a fully generic multi-brand tool in one
-change: the value of this repo today is depth on one machine, and a
-half-built generalization (detection without gated apply, or a quirk schema
-nothing populates but the original board) is worse than either extreme.
-Land step 1 before step 2; land step 2 before inventing a schema for
-hardware nobody has contributed data for yet.
+The full staged plan lives in `ROADMAP.md`, keep the two in sync rather
+than letting the plan drift between them. Short version: the fixes
+themselves mostly *can't* generalize, they're keyed to exact hardware
+behavior (this codec's node addresses, this board's `aura_support.ron`
+entry, this specific i2c failure mode). What can generalize is the
+scaffolding around them, detection, gating, reporting, and eventually a
+per-board quirk registry, staged so a half-built generalization (detection
+without gated apply, or a schema nothing populates but the original board)
+never sits half-finished. Current phase: Phase 0 (detection and `check.sh`
+gating) is done; Phase 1 (gating `install.sh`'s apply logic the same way)
+is next and not yet started. See `ROADMAP.md` for phases 2 through 4 and
+the non-goals.
 
 ## Updates made in this session
 
@@ -181,3 +146,10 @@ hardware nobody has contributed data for yet.
 - 2026-08-24: Adopted a no-em-dash rule for comments, commits, and docs
   (see Conventions above), and removed the em dashes this file had
   accumulated earlier in the same session.
+- 2026-08-24: Committed the hardware-detection work, pushed to a fork
+  (`DevInBlack001/rog-strix-g16-omarchy`), and opened
+  `edbron/rog-strix-g16-omarchy#1` against upstream.
+- 2026-08-24: Added `ROADMAP.md`, the full public staged plan for
+  Phases 0 through 4. Condensed this file's "Generalizing to other
+  hardware" section to a pointer at it, so the plan has one source of
+  truth instead of two copies that can drift.

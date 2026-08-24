@@ -160,7 +160,7 @@ Running this on different hardware entirely, a different ASUS board or
 another brand, is also useful: `./check.sh` will mostly report `N/A`, and the
 fingerprint it prints (board, codec, amp, keyboard) is exactly what's needed
 to eventually extend `lib/hardware-detect.sh` to recognize your machine.
-See `CLAUDE.md`, "Generalizing to other hardware and brands," for the plan.
+See **[ROADMAP.md](ROADMAP.md)** for the staged plan to get there.
 
 One thing genuinely untested: **whether the TAS2781 amps survive a hibernate
 (S4) resume.** They do not survive S3. Hibernate *may* differ, because resume is
